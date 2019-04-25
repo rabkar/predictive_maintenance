@@ -1,0 +1,31 @@
+SELECT
+    MCHN_SRL_NUM, CODE, 
+    FROM_DATE,
+    TO_DATE,
+    SUM(COUNT_EVENT) AS COUNT_EVENT,
+    SUM(DURATION_SECOND)/60.0 AS TOTAL_DURATION_MINUTES
+FROM(
+    SELECT
+        MCHN_SRL_NUM, CODE, ERR_MSG, 
+        DATE_TRUNC('DAY', FM_TM_TMS) AS FROM_DATE, DATE_TRUNC('DAY', TO_TM_TMS) AS TO_DATE,
+        CNT_1 COUNT_EVENT,
+        EXTRACT(EPOCH from TO_TM_TMS - FM_TM_TMS) DURATION_SECOND,
+        ROW_NUMBER()OVER(PARTITION BY MCHN_SRL_NUM, CODE, FM_TM_TMS, TO_TM_TMS ORDER BY PPN_DTTM DESC) AS RN
+    FROM SOR.VHMS_FAULT_HD785
+    WHERE LOWER(ERR_MSG) NOT LIKE '%error code not found%' AND 
+          LOWER(ERR_MSG) NOT LIKE '%error file not found%' AND 
+          LOWER(ERR_MSG) NOT LIKE '%sensor%failure%' AND
+          LOWER(ERR_MSG) NOT LIKE '%signal%lost%' AND
+          LOWER(ERR_MSG) NOT LIKE '%select%failure%' AND
+          LOWER(ERR_MSG) NOT LIKE '%signal%failure%' AND
+          LOWER(ERR_MSG) NOT LIKE '%abnormality%sensor%circuit%' AND
+          LOWER(ERR_MSG) NOT LIKE '%sensor%short%' AND
+          LOWER(ERR_MSG) NOT LIKE '%source voltage error%' AND
+          LOWER(ERR_MSG) NOT LIKE '%defective%monitor panel%' AND
+          LOWER(ERR_MSG) NOT LIKE '%communication%' AND
+          LOWER(ERR_MSG) NOT LIKE '%sensor%error%' AND
+          LENGTH(ERR_MSG) > 3  AND LENGTH(CODE) > 1 AND
+          FM_TM_TMS>DATE'2000-01-01' AND TO_TM_TMS>DATE'2000-01-01'  
+) FOO
+WHERE RN=1
+GROUP BY MCHN_SRL_NUM, CODE, FROM_DATE, TO_DATE
