@@ -5,11 +5,11 @@ from datetime import datetime, timedelta
 
 class Connection:
     def __init__(self, 
-                 dbname="DEVELOPMENT", 
-                 dbhost="10.2.51.116", 
+                 dbname="development", 
+                 dbhost="xx.a.bb.ccc", 
                  dbport="5480",
-                 dbuser="ANL_PDM",
-                 dbpass="DSPDM123"):
+                 dbuser="XXXX",
+                 dbpass="YYYY"):
         self.dbname = dbname
         self.dbhost = dbhost
         self.dbport = dbport
