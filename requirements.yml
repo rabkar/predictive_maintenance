@@ -1,0 +1,9 @@
+name: predictive-maintenance-service
+dependencies:
+  - flask
+  - numpy
+  - pandas
+  - pandasql
+  - python-dateutil
+  - scikit-learn
+  - gunicorn
