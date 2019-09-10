@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from matplotlib import pyplot as plt
 from pandasql import sqldf
 import numpy as np
+import json
 
 def estimate_rul(smr, hs, midlife_smr=6000, hs_limit=0.05, window_size=5000):
     # function to estimate rul and its supporting insight
