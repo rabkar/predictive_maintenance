@@ -7,11 +7,15 @@ import json
 def estimate_rul(smr, hs, midlife_smr=6000, hs_limit=0.05, window_size=5000):
     # function to estimate rul and its supporting insight
     # rul: remaining useful lifetime
-    # eol: end of lifetime (rul - current_smr)
+    # eol: end of lifetime (rul + current_smr)
+
+    # ensure smr and hs is numpy array
+    smr = np.array(smr)
+    hs = np.array(hs)
 
     def rul_correction(eol, smr):
         # sub-function to correct rul and eol if eol is before smr, then return NaN instead
-        if eol < smr:
+        if eol < 0:
             eol = np.nan
             rul = np.nan
         else:
@@ -20,31 +24,37 @@ def estimate_rul(smr, hs, midlife_smr=6000, hs_limit=0.05, window_size=5000):
                 eol = np.nan
                 rul = np.nan
         return (eol, rul)
+    
+    def calculate_eol(hs_limit, intercept, gradient):
+        if hs_limit > intercept:
+            return -1*intercept/gradient
+        else:
+            return (hs_limit - intercept)/gradient
         
     max_smr = smr.max()
     min_smr = smr.min()
     grad_ex, itcp_ex = linear_regression(smr, hs)
-    eol_1 = (hs_limit - itcp_ex)/grad_ex
-    (eol_1, rul_1) = rul_correction(eol_1, max_smr)
+    eol_1 = calculate_eol(hs_limit, itcp_ex, grad_ex)
+    rul_1 = (eol_1 - max_smr) if eol_1 >= max_smr else np.nan
     
-    maxima, minima = locate_extreme(y, window_size=25)
+    maxima, minima = locate_extreme(hs, window_size=25)
     if len(minima) > 2:
-        smr_minima = x[minima]
-        hsc_minima = y[minima]
+        smr_minima = smr[minima]
+        hsc_minima = hs[minima]
         grad_mn, itcp_mn = linear_regression(smr_minima, hsc_minima)
-        eol_2 = (hs_limit - itcp_mn)/grad_mn
-        (eol_2, rul_2) = rul_correction(eol_2, max_smr)
+        eol_2 = calculate_eol(hs_limit, itcp_mn, grad_mn)
+        rul_2 = (eol_2 - max_smr) if eol_2 >= max_smr else np.nan
     else:
-        (eol_2, rul_2) = (np.nan, np.nan)
+        (eol_2, rul_2) = (eol_1, rul_1)
     
     if len(maxima) > 2:
-        smr_maxima = x[maxima]
-        hsc_maxima = y[maxima]
+        smr_maxima = smr[maxima]
+        hsc_maxima = hs[maxima]
         grad_mx, itcp_mx = linear_regression(smr_maxima, hsc_maxima)
-        eol_3 = (hs_limit - itcp_mx)/grad_mx
-        (eol_3, rul_3) = rul_correction(eol_3, max_smr)
+        eol_3 = calculate_eol(hs_limit, itcp_mx, grad_mx)
+        rul_3 = (eol_3 - max_smr) if eol_3 >= max_smr else np.nan
     else:
-        (eol_3, rul_3) = (np.nan, np.nan)
+        (eol_3, rul_3) = (eol_1, rul_1)
             
     rul = np.array([rul_1, rul_2, rul_3])
     eol = np.array([eol_1, eol_2, eol_3])
@@ -54,22 +64,14 @@ def estimate_rul(smr, hs, midlife_smr=6000, hs_limit=0.05, window_size=5000):
     insight = {
         "gradient_per1000": grad_ex*1000, 
         "intercept": itcp_ex,
-        "latest_hs": y[np.where(x==max_smr)][0], 
-        "std": np.std(y-make_smooth(y,5)), 
+        "latest_hs": hs[np.where(smr==max_smr)][0], 
+        "std": np.std(hs-make_smooth(hs,5)), 
         "earliest_smr": min_smr,
         "latest_smr": max_smr, 
-        "rul_optimistic": rul[1] if max_smr <= midlife_smr and np.isnan(rul[1])==False else rul[2],
-        "rul_pessimistic": rul[0] if max_smr <= midlife_smr and np.isnan(rul[0])==False else rul[1],
+        "rul_optimistic": rul[2] if np.isnan(rul[2])==False else rul[1],
+        "rul_pessimistic": rul[0] if np.isnan(rul[0])==False else rul[1]
     }
-    # additionally compute eol by substracting rul with latest_smr
-    ## compute eol_optimistic if rul is not NaN else set value as NaN
-    insight["eol_optimistic"] = \
-        insight.get("rul_optimistic") - insight.get("latest_smr") \
-            if np.isnan(insight.get("rul_optimistic"))==False else np.nan
-    ## compute eol_pessimistic if rul is not NaN else set value as NaN
-    insight["eol_pessimistic"] = \
-        insight.get("rul_pessimistic") - insight.get("latest_smr") \
-            if np.isnan(insight.get("rul_pessimistic"))==False else np.nan
+
     return insight
 
 def linear_regression(x, y):
@@ -84,6 +86,7 @@ def linear_regression(x, y):
     return (gradient, intercept)
 
 def locate_extreme(data, window_size):
+    half_window = int(window_size/2)
     maxima_index = []
     minima_index = []
     n = len(data)
@@ -93,8 +96,9 @@ def locate_extreme(data, window_size):
         sign_change_diff = np.diff(sign_change)
         max_val = np.max(sub_data)
         min_val = np.min(sub_data)
-        if (np.abs(sub_data[0] - sub_data[int(window_size/2)]) >= 0.1) and \
-            (np.abs(sub_data[-1] - sub_data[int(window_size/2)]) >= 0.1) :
+        
+        if (np.abs(sub_data[0] - sub_data[half_window]) >= 0.02) and \
+            (np.abs(sub_data[-1] - sub_data[half_window]) >= 0.02) :
             maxima = np.where(sign_change_diff<0)[0]
             minima = np.where(sign_change_diff>0)[0]
             for mx_idx in list(maxima):
